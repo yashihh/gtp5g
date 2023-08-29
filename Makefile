@@ -80,9 +80,9 @@ $(MODULE_NAME)-objs := $(5G_MOD) $(5G_LOG) $(5G_UTIL) $(5G_GTPU) \
 default: module
 
 module:
+# clean the make
+	$(MAKE) -C $(KDIR) M=$(PWD) clean    
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
-clean:
-	$(MAKE) -C $(KDIR) M=$(PWD) clean
  
 install:
 	$(INSTALL)
@@ -96,3 +96,14 @@ uninstall:
 	$(DEPMOD)
 	sed -zi "s/gtp5g\n//g" /etc/modules
 	rmmod -f  $(MODULE_NAME)
+
+reinstall:
+	rm -f $(DESTDIR)/lib/modules/$(KVER)/$(MOD_KERNEL_PATH)/$(MODULE_NAME).ko
+	$(DEPMOD)
+	sed -zi "s/gtp5g\n//g" /etc/modules
+	rmmod -f  $(MODULE_NAME)
+	$(INSTALL)
+	modprobe udp_tunnel
+	$(DEPMOD)
+	modprobe $(MODULE_NAME)
+	echo "gtp5g" >> /etc/modules
