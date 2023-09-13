@@ -329,6 +329,7 @@ struct pdr *pdr_find_by_ipv4(struct gtp5g_dev *gtp, struct sk_buff *skb,
             if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
                 continue;
 
+        GTP5G_LOG(NULL, "Match PDR ID:%d with %pI4\n", pdr->id, &addr);
         return pdr;
     }
 
