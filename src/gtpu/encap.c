@@ -25,6 +25,8 @@
 #include "api_version.h"
 #include "pktinfo.h"
 
+#include ""
+
 /* used to compatible with api with/without seid */
 #define MSG_KOV_LEN 4
 
@@ -864,7 +866,14 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
     struct outer_header_creation *hdr_creation;
     u64 volume;
     struct forwarding_parameter *fwd_param;
-
+    
+    unsigned char protocol;
+    unsigned int messageType;
+    
+    /* Extract ptp protocol info */
+    if(skb->len >= 43){
+        
+    }
     if (!far) {
         GTP5G_ERR(dev, "Unknown RAN address\n");
         goto err;

@@ -301,7 +301,7 @@ struct pdr *pdr_find_by_gtp1u(struct gtp5g_dev *gtp, struct sk_buff *skb,
             if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
                 continue;
 
-        GTP5G_INF(NULL, "Match PDR ID:%d\n", pdr->id);
+        GTP5G_INF(NULL, "Match PDR ID:%d with IP:%pI4, pdi UE_ADDR_IP:%pI4\n", pdr->id, &target_addr, &pdi->ue_addr_ipv4->s_addr );
 
         return pdr;
     }
@@ -329,7 +329,7 @@ struct pdr *pdr_find_by_ipv4(struct gtp5g_dev *gtp, struct sk_buff *skb,
             if (!sdf_filter_match(pdi->sdf, skb, hdrlen, GTP5G_SDF_FILTER_OUT))
                 continue;
 
-        GTP5G_LOG(NULL, "Match PDR ID:%d with %pI4\n", pdr->id, &addr);
+        GTP5G_INF(NULL, "Match PDR ID:%d with IP:%pI4\n", pdr->id, &addr);
         return pdr;
     }
 
