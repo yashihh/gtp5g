@@ -25,7 +25,9 @@
 #include "api_version.h"
 #include "pktinfo.h"
 
-#include ""
+#include "ptp_message.h"
+#include "ptp_suffix.h"
+
 
 /* used to compatible with api with/without seid */
 #define MSG_KOV_LEN 4
@@ -47,6 +49,7 @@ static int unix_sock_send(struct pdr *, struct far *, void *, u32, u32);
 static int gtp5g_fwd_skb_ipv4(struct sk_buff *, 
     struct net_device *, struct gtp5g_pktinfo *, 
     struct pdr *, struct far *, uint64_t);
+void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
 
 /* When gtp5g newlink, establish the udp tunnel used in N3 interface */
 struct sock *gtp5g_encap_enable(int fd, int type, struct gtp5g_dev *gtp){
@@ -867,13 +870,38 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
     u64 volume;
     struct forwarding_parameter *fwd_param;
     
-    unsigned char protocol;
     unsigned int messageType;
     
-    /* Extract ptp protocol info */
-    if(skb->len >= 43){
-        
+    /* Extract IEEE 1588 info */
+    if(skb->len >= 28){ //ptp exist
+        // GTP5G_LOG(NULL, "PTP exists");
+        messageType = (unsigned int)skb->data[28] & 0x0f;
+        // messageType = messageType ; //extract half back
     }
+    switch (messageType){
+        case PTP_SYNC:
+            GTP5G_LOG(NULL, "PTP_SYNC");
+            break;
+        case PTP_FOLLOW_UP:
+            GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
+            gtp5g_set_ptp_Tsi(skb);
+            break;
+        
+        case PTP_DELAY_REQ:
+            break;
+        /* E2E can't pass P2P message */
+        case PTP_PDELAY_REQ:
+            GTP5G_INF(NULL, "E2E can't pass P2P message.");
+            return FAR_ACTION_DROP;
+            break;
+        case PTP_PDELAY_RESP:
+            GTP5G_INF(NULL, "E2E can't pass P2P message.");
+            return FAR_ACTION_DROP;
+            break;
+        default:
+            break;
+    }
+
     if (!far) {
         GTP5G_ERR(dev, "Unknown RAN address\n");
         goto err;
@@ -995,4 +1023,21 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     }
 
     return -ENOENT;
+}
+
+void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
+    struct timespec tv;
+    struct ptp_suffix *suffix;
+    suffix = skb_put(skb, sizeof(*suffix));
+    /* Fill PTP suffix field*/
+	suffix->type.type = 0x3;
+	suffix->length = 15;
+    suffix->organization_Id = 0x1f9ea0;
+    suffix->subtype.subtype = 1;
+    /* Get current timestamp */
+    getnstimeofday(&tv);
+    suffix->data.secondsField = tv.tv_sec;
+    suffix->data.nanosecondsField = tv.tv_nsec;
+    GTP5G_LOG(NULL, "Tsi timestamp: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+    return;
 }
