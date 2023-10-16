@@ -50,7 +50,9 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *,
     struct net_device *, struct gtp5g_pktinfo *, 
     struct pdr *, struct far *, uint64_t);
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
-
+unsigned long long DelayReqResidence;
+unsigned long long htonll(unsigned long long host);
+void gtp5g_push_rt_DelayResp(struct sk_buff *skb);
 /* When gtp5g newlink, establish the udp tunnel used in N3 interface */
 struct sock *gtp5g_encap_enable(int fd, int type, struct gtp5g_dev *gtp){
     struct udp_tunnel_sock_cfg tuncfg = {NULL};
@@ -873,21 +875,26 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
     unsigned int messageType;
     
     /* Extract IEEE 1588 info */
-    if(skb->len >= 28){ //ptp exist
+    if(skb->len >= 27){ //ptp exist
         // GTP5G_LOG(NULL, "PTP exists");
         messageType = (unsigned int)skb->data[28] & 0x0f;
         // messageType = messageType ; //extract half back
     }
     switch (messageType){
         case PTP_SYNC:
-            GTP5G_LOG(NULL, "PTP_SYNC");
+            // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
+            GTP5G_LOG(NULL, "PTP_FOLLOW_UP len %u",skb->len);
             gtp5g_set_ptp_Tsi(skb);
+            
             break;
         
         case PTP_DELAY_REQ:
+            break;
+
+        case PTP_DELAY_RESP:
+            gtp5g_push_rt_DelayResp(skb);
             break;
         /* E2E can't pass P2P message */
         case PTP_PDELAY_REQ:
@@ -1031,13 +1038,37 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     suffix = skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
 	suffix->type.type = 0x3;
-	suffix->length = 15;
+	suffix->length = 20;
     suffix->organization_Id = 0x1f9ea0;
     suffix->subtype.subtype = 1;
     /* Get current timestamp */
     getnstimeofday(&tv);
-    suffix->data.secondsField = tv.tv_sec;
-    suffix->data.nanosecondsField = tv.tv_nsec;
+    suffix->data.secondsField = tv.tv_sec; // 6 bytes
+    suffix->data.nanosecondsField = tv.tv_nsec; // 4 bytes
     GTP5G_LOG(NULL, "Tsi timestamp: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+    return;
+}
+
+unsigned long long htonll(unsigned long long host){
+    unsigned long tmp_low,tmp_high;
+    tmp_low = htonl((long)host);
+    tmp_high = htonl((long)(host >> 32));
+    host &= 0;
+    host |= tmp_low;
+    host <<= 32;
+    host |= tmp_high;
+    return host;
+}
+
+void gtp5g_push_rt_DelayResp(struct sk_buff *skb){
+    unsigned char* tail_ptr;
+    struct delay_resp_msg *ptr;
+    tail_ptr = skb_tail_pointer(skb);
+    //avoid kernel crash
+    if(skb->len < sizeof(struct delay_resp_msg)) return;
+    ptr = (struct delay_resp_msg *)(tail_ptr - sizeof(struct delay_resp_msg));
+    //offset 2 bytes
+    ptr->hdr.correction = (htonll(DelayReqResidence) >> 16);
+    //GTP5G_LOG(NULL, "TDelay.Tdelay = %lld",TDelay.Tdelay);
     return;
 }
