@@ -80,9 +80,9 @@ $(MODULE_NAME)-objs := $(5G_MOD) $(5G_LOG) $(5G_UTIL) $(5G_GTPU) \
 default: module
 
 module:
-# clean and make
-	$(MAKE) -C $(KDIR) M=$(PWD) clean    
 	$(MAKE) -C $(KDIR) M=$(PWD) modules
+clean:
+	$(MAKE) -C $(KDIR) M=$(PWD) clean
  
 install:
 	$(INSTALL)

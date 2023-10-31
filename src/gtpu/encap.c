@@ -27,10 +27,13 @@
 
 #include "ptp_message.h"
 #include "ptp_suffix.h"
+#include "msg.h"
 
 
 /* used to compatible with api with/without seid */
 #define MSG_KOV_LEN 4
+#define PTP_EVENT_PORT 319
+#define PTP_GENERAL_PORT 320
 
 enum msg_type {
     TYPE_BUFFER = 1,
@@ -861,6 +864,41 @@ static int gtp5g_drop_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     return FAR_ACTION_DROP;
 }
 
+void pkt_hex_dump(struct sk_buff *skb){
+    size_t len;
+    int rowsize = 16;
+    int i, l, linelen, remaining;
+    int li = 0;
+    uint8_t *data, ch; 
+
+    printk("Packet hex dump:\n");
+    data = (uint8_t *) skb_mac_header(skb);
+
+    if (skb_is_nonlinear(skb)) {
+        len = skb->data_len;
+    } else {
+        len = skb->len;
+    }
+
+    remaining = len;
+    for (i = 0; i < len; i += rowsize) {
+        printk("%06d\t", li);
+
+        linelen = min(remaining, rowsize);
+        remaining -= rowsize;
+
+        for (l = 0; l < linelen; l++) {
+            ch = data[l];
+            printk(KERN_CONT "%02X ", (uint32_t) ch);
+        }
+
+        data += linelen;
+        li += 10; 
+
+        printk(KERN_CONT "\n");
+    }
+}
+
 static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb, 
     struct net_device *dev, struct gtp5g_pktinfo *pktinfo, 
     struct pdr *pdr, struct far *far, uint64_t volume_mbqe)
@@ -871,23 +909,29 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
     struct outer_header_creation *hdr_creation;
     u64 volume;
     struct forwarding_parameter *fwd_param;
-    
-    unsigned int messageType;
-    
+    struct udphdr *udph;
+    struct ptp_header *ptph;
+    unsigned int messageType = -1;
     /* Extract IEEE 1588 info */
-    if(skb->len >= 27){ //ptp exist
-        // GTP5G_LOG(NULL, "PTP exists");
-        messageType = (unsigned int)skb->data[28] & 0x0f;
-        // messageType = messageType ; //extract half back
+    if (iph->protocol == IPPROTO_UDP){ //ptp exist
+        udph = udp_hdr(skb);
+        // GTP5G_LOG(NULL, "udph->source: %u, skb->data[28]: %x",ntohs(udph->source), skb->data[28]);
     }
-    switch (messageType){
+    if ( ntohs(udph->source) == PTP_EVENT_PORT || ntohs(udph->source) == PTP_GENERAL_PORT ){
+        ptph = (struct ptp_header *) udph + ntohs(udph->len);
+        messageType = msg_type(ptph);
+    
+    }
+    GTP5G_LOG(NULL, "ptph->messageType: %u",messageType);
+    switch ( messageType ){
         case PTP_SYNC:
             // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            GTP5G_LOG(NULL, "PTP_FOLLOW_UP len %u",skb->len);
+            GTP5G_INF(NULL, "PTP_FOLLOW_UP");
             gtp5g_set_ptp_Tsi(skb);
-            
+            pkt_hex_dump(skb);
+    
             break;
         
         case PTP_DELAY_REQ:
@@ -906,8 +950,10 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             return FAR_ACTION_DROP;
             break;
         default:
+            GTP5G_INF(NULL, "Not PTP message. %d", messageType);
             break;
     }
+    
 
     if (!far) {
         GTP5G_ERR(dev, "Unknown RAN address\n");
@@ -1010,8 +1056,9 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     //    GTP5G_ERR(dev, "%s:%d QER Rule found, id(%#x) qfi(%#x) TODO\n", 
     //            __func__, __LINE__, qer->id, qer->qfi);
     //}
-
     far = rcu_dereference(pdr->far);
+    GTP5G_ERR(dev, "(%u)(%u)(%u)", far->action, far->id, pdr->id);
+
     if (far) {
         // One and only one of the DROP, FORW and BUFF flags shall be set to 1.
         // The NOCP flag may only be set if the BUFF flag is set.
@@ -1032,10 +1079,14 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     return -ENOENT;
 }
 
+
+
+
+
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     struct timespec tv;
     struct ptp_suffix *suffix;
-    suffix = skb_put(skb, sizeof(*suffix));
+    suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
 	suffix->type.type = 0x3;
 	suffix->length = 20;
@@ -1043,9 +1094,9 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     suffix->subtype.subtype = 1;
     /* Get current timestamp */
     getnstimeofday(&tv);
-    suffix->data.secondsField = tv.tv_sec; // 6 bytes
-    suffix->data.nanosecondsField = tv.tv_nsec; // 4 bytes
-    GTP5G_LOG(NULL, "Tsi timestamp: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+    suffix->data.secondsField = htonl(tv.tv_sec); // 6 bytes
+    suffix->data.nanosecondsField = htonl(tv.tv_nsec); // 4 bytes
+    GTP5G_LOG(NULL, "Tsi timestamps: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
     return;
 }
 
