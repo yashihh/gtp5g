@@ -917,8 +917,17 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
         // GTP5G_LOG(NULL, "udph->source: %u, skb->data[28]: %x",ntohs(udph->source), skb->data[28]);
     }
     if ( ntohs(udph->source) == PTP_EVENT_PORT || ntohs(udph->source) == PTP_GENERAL_PORT ){
-        ptph = (struct ptp_header *) ((unsigned char *)udph + 8);
+        ptph = (struct ptp_header *) (udph + 1);
+
         messageType = msg_type(ptph);
+        // pkt_hex_dump(skb);
+        // printk(KERN_CONT "Message Type: %x\n", messageType);
+        // printk(KERN_CONT "ptph->tsmt: %x\n",ptph->tsmt);
+        // printk(KERN_CONT "ptph->ver: %x\n",ptph->ver);
+        // printk(KERN_CONT "ptph->messageLength: %x\n",ptph->messageLength);
+        // printk(KERN_CONT "ptph->control: %x\n",ptph->domainNumber);
+        // printk(KERN_CONT "ptph->reserved1: %x\n",ptph->reserved1);
+        // printk(KERN_CONT "-------------------------------");
     }
     switch ( messageType ){
         case PTP_SYNC:
