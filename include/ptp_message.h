@@ -173,5 +173,13 @@ struct management_msg {
 	uint8_t             reserved;
 	uint8_t             suffix[0];
 } PACKED;
-
+/**
+ * Obtain the message type.
+ * @param m  Message to test.
+ * @return   The value of the messageType field.
+ */
+static inline int msg_type(const struct ptp_header *m)
+{
+	return m->tsmt & 0x0f;
+}
 #endif

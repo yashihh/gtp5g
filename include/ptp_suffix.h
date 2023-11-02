@@ -1,3 +1,6 @@
+/**
+ * @file ptp_suffix.h
+ */
 struct Type{
     unsigned char type; 
     unsigned char reserved;

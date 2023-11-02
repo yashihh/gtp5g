@@ -27,7 +27,6 @@
 
 #include "ptp_message.h"
 #include "ptp_suffix.h"
-#include "msg.h"
 
 
 /* used to compatible with api with/without seid */
@@ -918,11 +917,9 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
         // GTP5G_LOG(NULL, "udph->source: %u, skb->data[28]: %x",ntohs(udph->source), skb->data[28]);
     }
     if ( ntohs(udph->source) == PTP_EVENT_PORT || ntohs(udph->source) == PTP_GENERAL_PORT ){
-        ptph = (struct ptp_header *) udph + ntohs(udph->len);
+        ptph = (struct ptp_header *) ((unsigned char *)udph + 8);
         messageType = msg_type(ptph);
-    
     }
-    GTP5G_LOG(NULL, "ptph->messageType: %u",messageType);
     switch ( messageType ){
         case PTP_SYNC:
             // GTP5G_LOG(NULL, "PTP_SYNC");
@@ -1057,7 +1054,6 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     //            __func__, __LINE__, qer->id, qer->qfi);
     //}
     far = rcu_dereference(pdr->far);
-    GTP5G_ERR(dev, "(%u)(%u)(%u)", far->action, far->id, pdr->id);
 
     if (far) {
         // One and only one of the DROP, FORW and BUFF flags shall be set to 1.
