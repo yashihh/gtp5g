@@ -52,6 +52,7 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *,
     struct net_device *, struct gtp5g_pktinfo *, 
     struct pdr *, struct far *, uint64_t);
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
+void gtp5g_get_ptp_Tsi(struct sk_buff *skb);
 unsigned long long DelayReqResidence;
 unsigned long long htonll(unsigned long long host);
 void gtp5g_push_rt_DelayResp(struct sk_buff *skb);
@@ -751,7 +752,10 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
     struct gtpv1_hdr *gtp1 = (struct gtpv1_hdr *)(skb->data + sizeof(struct udphdr));
     struct iphdr *iph;
     struct udphdr *uh;
+    struct ptp_header *ptph;
+    unsigned int messageType = -1;
     struct pcpu_sw_netstats *stats;
+
     int ret;
     u64 volume = 0;
 
@@ -799,6 +803,13 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
                 return -1;
             }
 
+            /* Extract IEEE 1588 info */
+            if ( ntohs(uh->source) == PTP_EVENT_PORT || ntohs(uh->source) == PTP_GENERAL_PORT ){
+                ptph = (struct ptp_header *) (uh + 1);
+                messageType = msg_type(ptph);
+                GTP5G_ERR(pdr->dev, "Should not foward the first uplink packet");
+
+            }
             return 0;
         }
     }
@@ -824,6 +835,31 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
      * */
     skb_reset_network_header(skb);
 
+    switch ( messageType ){
+        case PTP_SYNC:
+            // GTP5G_LOG(NULL, "PTP_SYNC");
+            break;
+        case PTP_FOLLOW_UP:
+            GTP5G_INF(NULL, "PTP_FOLLOW_UP");
+            gtp5g_get_ptp_Tsi(skb);
+            break;
+        
+        case PTP_DELAY_REQ:
+            break;
+
+        case PTP_DELAY_RESP:
+            break;
+        /* E2E can't pass P2P message */
+        case PTP_PDELAY_REQ:
+            GTP5G_ERR(NULL, "E2E can't pass P2P message.");
+            break;
+        case PTP_PDELAY_RESP:
+            GTP5G_ERR(NULL, "E2E can't pass P2P message.");
+            break;
+        default:
+            GTP5G_INF(NULL, "Not PTP message. %d", messageType);
+            break;
+    }
     skb->dev = dev;
 
     stats = this_cpu_ptr(skb->dev->tstats);
@@ -959,7 +995,8 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             GTP5G_INF(NULL, "Not PTP message. %d", messageType);
             break;
     }
-    
+    GTP5G_INF(NULL, "test-----------------");
+    pkt_hex_dump(skb);
 
     if (!far) {
         GTP5G_ERR(dev, "Unknown RAN address\n");
@@ -1084,7 +1121,49 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     return -ENOENT;
 }
 
-
+void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
+    unsigned long secondsField;
+    unsigned int nanosecondsField;
+    unsigned long long residence;
+    struct timespec tv;
+    int suffix;
+    GTP5G_INF(NULL,"Remove TSi in PTP traffic and calculate Tse");
+    /* Remove Tsi field*/
+    suffix = skb->len - 20;
+    GTP5G_LOG(NULL,"second = %x %x %x %x %x %x",skb->data[suffix+10],skb->data[suffix+11],skb->data[suffix+12],skb->data[suffix+13],skb->data[suffix+14],skb->data[suffix+15]);
+    secondsField = skb->data[suffix+15];
+    secondsField = secondsField << 8;
+    secondsField += skb->data[suffix+14];
+    secondsField = secondsField << 8;
+    secondsField += skb->data[suffix+13];
+    secondsField = secondsField << 8;
+    secondsField += skb->data[suffix+12];
+    secondsField = secondsField << 8;
+    secondsField += skb->data[suffix+11];
+    secondsField = secondsField << 8;
+    secondsField += skb->data[suffix+10];
+    GTP5G_INF(NULL,"calculate second = %lu",secondsField);
+    nanosecondsField = skb->data[suffix+19];
+    nanosecondsField <<= 8;
+    nanosecondsField += skb->data[suffix+18];
+    nanosecondsField <<= 8;
+    nanosecondsField += skb->data[suffix+17];
+    nanosecondsField <<= 8;
+    nanosecondsField += skb->data[suffix+16];
+    GTP5G_INF(NULL,"calculate nano second = %u",nanosecondsField);
+    /* Get current timestamp */
+    getnstimeofday(&tv);
+    residence = (tv.tv_nsec > nanosecondsField)? (tv.tv_nsec-nanosecondsField ) : tv.tv_nsec-nanosecondsField + 1000000000;
+    GTP5G_INF(NULL,"residence = %llu",residence);
+    /* Correction Field: 22~27 */
+    if(residence <= 0x7FFFFFFFFFFF){
+        /* Doesn't exceed 6 bytes max*/
+        unsigned char *correction = (unsigned char *)(&skb->data[22]);
+        residence = htonll(residence) >> 16;
+        memcpy(correction,&residence,sizeof(residence));
+    }
+    skb->len = skb->len - 20;
+};
 
 
 
@@ -1094,7 +1173,7 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
 	suffix->type.type = 0x3;
-	suffix->length = 20;
+	suffix->length = htons(15);
     suffix->organization_Id = 0x1f9ea0;
     suffix->subtype.subtype = 1;
     /* Get current timestamp */
