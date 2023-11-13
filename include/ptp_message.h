@@ -129,7 +129,7 @@ struct delay_req_msg {
 struct follow_up_msg {
 	struct ptp_header   hdr;
 	struct Timestamp    preciseOriginTimestamp;
-	uint8_t             suffix[32];
+	uint8_t             suffix[0];
 } PACKED;
 
 struct delay_resp_msg {

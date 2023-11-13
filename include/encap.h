@@ -37,4 +37,12 @@ extern void gtp5g_encap_disable(struct sock *);
 extern int gtp5g_handle_skb_ipv4(struct sk_buff *, struct net_device *,
         struct gtp5g_pktinfo *);
 
+struct tsn_tdelay{
+        struct timespec* t1;
+        struct timespec* t2;
+        struct timespec* t3;
+        struct timespec* t4;
+        unsigned long long Tdelay;
+};
+
 #endif // __ENCAP_H__

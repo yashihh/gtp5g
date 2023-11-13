@@ -27,7 +27,7 @@
 
 #include "ptp_message.h"
 #include "ptp_suffix.h"
-
+#include "delay.h"
 
 /* used to compatible with api with/without seid */
 #define MSG_KOV_LEN 4
@@ -51,11 +51,15 @@ static int unix_sock_send(struct pdr *, struct far *, void *, u32, u32);
 static int gtp5g_fwd_skb_ipv4(struct sk_buff *, 
     struct net_device *, struct gtp5g_pktinfo *, 
     struct pdr *, struct far *, uint64_t);
+/* for ptp instance */
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
 void gtp5g_get_ptp_Tsi(struct sk_buff *skb);
+void gtp5g_push_TdelayValue(struct sk_buff *skb);
 unsigned long long DelayReqResidence;
 unsigned long long htonll(unsigned long long host);
 void gtp5g_push_rt_DelayResp(struct sk_buff *skb);
+struct tsn_tdelay TDelay = {.t1 = NULL, .t2 = NULL, .t3 = NULL, .t4 = NULL, .Tdelay = 0};
+
 /* When gtp5g newlink, establish the udp tunnel used in N3 interface */
 struct sock *gtp5g_encap_enable(int fd, int type, struct gtp5g_dev *gtp){
     struct udp_tunnel_sock_cfg tuncfg = {NULL};
@@ -840,7 +844,7 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
             // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            GTP5G_INF(NULL, "PTP_FOLLOW_UP");
+            GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
             gtp5g_get_ptp_Tsi(skb);
             break;
         
@@ -970,9 +974,10 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            GTP5G_INF(NULL, "PTP_FOLLOW_UP");
+            // GTP5G_INF(NULL, "PTP_FOLLOW_UP");
+            gtp5g_push_TdelayValue(skb);
             gtp5g_set_ptp_Tsi(skb);
-            pkt_hex_dump(skb);
+            // pkt_hex_dump(skb);
     
             break;
         
@@ -995,8 +1000,6 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             GTP5G_INF(NULL, "Not PTP message. %d", messageType);
             break;
     }
-    GTP5G_INF(NULL, "test-----------------");
-    pkt_hex_dump(skb);
 
     if (!far) {
         GTP5G_ERR(dev, "Unknown RAN address\n");
@@ -1121,6 +1124,26 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
     return -ENOENT;
 }
 
+void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
+    struct timespec tv;
+    struct ptp_suffix *suffix;
+    uint8_t OUI[3] = {0x1f, 0x9e, 0xa0};
+
+    suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
+    /* Fill PTP suffix field*/
+	suffix->type = TLV_ORGANIZATION_EXTENSION;
+	suffix->length = htons(sizeof(*suffix) - sizeof(suffix->type) - sizeof(suffix->length));
+    memcpy(suffix->organization_Id, OUI, sizeof(OUI) );
+    suffix->subtype[2] = 1;
+    /* Get current timestamp */
+    getnstimeofday(&tv); 
+    suffix->data.seconds_msb = htons(tv.tv_sec >> 32 & 0xFFFF); // 2 bytes  
+    suffix->data.seconds_lsb = htonl(tv.tv_sec & 0xFFFFFFFF); // 4 bytes  
+    suffix->data.nanoseconds = htonl(tv.tv_nsec); // 4 bytes
+    GTP5G_LOG(NULL, "Tsi timestamps: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+    return;
+}
+
 void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
     unsigned long secondsField;
     unsigned int nanosecondsField;
@@ -1165,22 +1188,20 @@ void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
     skb->len = skb->len - 20;
 };
 
-
-
-void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
-    struct timespec tv;
-    struct ptp_suffix *suffix;
-    suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
-    /* Fill PTP suffix field*/
-	suffix->type.type = 0x3;
-	suffix->length = htons(15);
-    suffix->organization_Id = 0x1f9ea0;
-    suffix->subtype.subtype = 1;
-    /* Get current timestamp */
-    getnstimeofday(&tv);
-    suffix->data.secondsField = htonl(tv.tv_sec); // 6 bytes
-    suffix->data.nanosecondsField = htonl(tv.tv_nsec); // 4 bytes
-    GTP5G_LOG(NULL, "Tsi timestamps: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+void gtp5g_push_TdelayValue(struct sk_buff *skb){
+    unsigned char* tail_ptr;
+    struct follow_up_msg *ptr;
+    tail_ptr = skb_tail_pointer(skb);
+    //avoid kernel crash
+    if(skb->len < sizeof(struct follow_up_msg)){
+        GTP5G_LOG(NULL, "skb->len = %x" ,skb->len);
+        return;
+    }
+    ptr = (struct follow_up_msg *)(tail_ptr - sizeof(struct follow_up_msg));
+    //offset 2 bytes
+    TDelay.Tdelay = get_Tdelay_lvl();
+    ptr->hdr.correction = (htonll(TDelay.Tdelay) >> 16);
+    GTP5G_LOG(NULL, "TDelay.Tdelay = %lld",TDelay.Tdelay);
     return;
 }
 

@@ -7,6 +7,7 @@
 #include "log.h"
 #include "pdr.h"
 #include "far.h"
+#include "delay.h"
 
 #include "util.h"
 
@@ -84,6 +85,7 @@ struct proc_dir_entry *proc_gtp5g_pdr = NULL;
 struct proc_dir_entry *proc_gtp5g_far = NULL;
 struct proc_dir_entry *proc_gtp5g_qer = NULL;
 struct proc_dir_entry *proc_gtp5g_urr = NULL;
+struct proc_dir_entry *proc_gtp5g_Tdelay = NULL;
 struct proc_gtp5g_pdr proc_pdr;
 struct proc_gtp5g_far proc_far;
 struct proc_gtp5g_qer proc_qer;
@@ -262,6 +264,11 @@ static int gtp5g_urr_read(struct seq_file *s, void *v)
     seq_printf(s, "\t Start time: %lld\n", proc_urr.start_time);
     seq_printf(s, "\t End time: %lld\n", proc_urr.end_time);
 
+    return 0;
+}
+
+static int gtp5g_Tdelay_read(struct seq_file *s, void *v) {
+    seq_printf(s, "Current: Tdelay = %d\n", get_Tdelay_lvl());
     return 0;
 }
 
@@ -519,6 +526,35 @@ err:
     return -1;
 }
 
+static ssize_t proc_Tdelay_write(struct file *filp, const char __user *buffer,
+    size_t len, loff_t *dptr) 
+{
+    char buf[16];
+    unsigned long buf_len = min(len, sizeof(buf) - 1);
+    int Tdelay;
+
+    if (copy_from_user(buf, buffer, buf_len)) {
+        GTP5G_ERR(NULL, "Failed to read buffer: %s\n", buffer);
+        goto err;
+    }
+    
+    buf[buf_len] = 0;
+    if (sscanf(buf, "%d", &Tdelay) != 1) {
+        GTP5G_ERR(NULL, "Failed to read Tdelay value: %s\n", buffer);
+        goto err;
+    }
+  
+    if (Tdelay < 0) {
+        GTP5G_ERR(NULL, "Failed to set Tdelay value: %d\n", Tdelay);
+        goto err;
+    }
+    
+    set_Tdelay_lvl(Tdelay);
+    return strnlen(buf, buf_len);
+err:
+    return -1;
+}
+
 static int proc_pdr_read(struct inode *inode, struct file *file)
 {
     return single_open(file, gtp5g_pdr_read, NULL);
@@ -538,6 +574,12 @@ static int proc_urr_read(struct inode *inode, struct file *file)
 {
     return single_open(file, gtp5g_urr_read, NULL);
 }
+
+static int proc_Tdelay_read(struct inode *inode, struct file *file)
+{
+    return single_open(file, gtp5g_Tdelay_read, NULL);
+}
+
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
 static const struct proc_ops proc_gtp5g_dbg_ops = {
@@ -698,5 +740,7 @@ void remove_proc()
     remove_proc_entry("far", proc_gtp5g);
     remove_proc_entry("pdr", proc_gtp5g);
     remove_proc_entry("dbg", proc_gtp5g);
+    remove_proc_entry("Tdelay", proc_gtp5g);
+
     remove_proc_entry("gtp5g", NULL);
 }
