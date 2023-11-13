@@ -746,7 +746,7 @@ static int gtp5g_rx(struct pdr *pdr, struct sk_buff *skb,
 out:
     return rt;
 }
-
+// TODO: uplink not yet
 static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
     unsigned int hdrlen, struct pdr *pdr, struct far *far, uint64_t volume_mbqe)
 {
