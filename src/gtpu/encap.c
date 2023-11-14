@@ -978,7 +978,7 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             gtp5g_push_TdelayValue(skb);
             gtp5g_set_ptp_Tsi(skb);
             // pkt_hex_dump(skb);
-    
+            
             break;
         
         case PTP_DELAY_REQ:
@@ -1035,6 +1035,8 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
 
     pdr->dl_pkt_cnt++;
     pdr->dl_byte_cnt += skb->len;
+    GTP5G_LOG(NULL, "skb->len (%u)", skb->len);
+
     GTP5G_INF(NULL, "PDR (%u) DL_PKT_CNT (%llu) DL_BYTE_CNT (%llu)", pdr->id, pdr->dl_pkt_cnt, pdr->dl_byte_cnt);
 
     volume = ip4_rm_header(skb, 0);
@@ -1128,11 +1130,11 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     struct timespec tv;
     struct ptp_suffix *suffix;
     uint8_t OUI[3] = {0x1f, 0x9e, 0xa0};
-
     suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
-	suffix->type = TLV_ORGANIZATION_EXTENSION;
-	suffix->length = htons(sizeof(*suffix) - sizeof(suffix->type) - sizeof(suffix->length));
+	suffix->type = htons(TLV_ORGANIZATION_EXTENSION);
+	suffix->length = htons(sizeof(*suffix));
+    // skb->data[31] = 60;
     memcpy(suffix->organization_Id, OUI, sizeof(OUI) );
     suffix->subtype[2] = 1;
     /* Get current timestamp */
