@@ -1129,7 +1129,7 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     struct timespec tv;
     struct ptp_suffix *suffix;
-    uint8_t OUI[3] = {0x1f, 0x9e, 0xa0};
+    uint8_t OUI[3] = {0x08, 0x00, 0x27};//{0x1f, 0x9e, 0xa0};
     suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
 	suffix->type = htons(TLV_ORGANIZATION_EXTENSION);
@@ -1196,14 +1196,14 @@ void gtp5g_push_TdelayValue(struct sk_buff *skb){
     tail_ptr = skb_tail_pointer(skb);
     //avoid kernel crash
     if(skb->len < sizeof(struct follow_up_msg)){
-        GTP5G_LOG(NULL, "skb->len = %x" ,skb->len);
+        // GTP5G_LOG(NULL, "skb->len = %x" ,skb->len);
         return;
     }
     ptr = (struct follow_up_msg *)(tail_ptr - sizeof(struct follow_up_msg));
     //offset 2 bytes
     TDelay.Tdelay = get_Tdelay_lvl();
     ptr->hdr.correction = (htonll(TDelay.Tdelay) >> 16);
-    GTP5G_LOG(NULL, "TDelay.Tdelay = %lld",TDelay.Tdelay);
+    // GTP5G_LOG(NULL, "TDelay.Tdelay = %lld",TDelay.Tdelay);
     return;
 }
 
