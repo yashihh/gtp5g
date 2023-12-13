@@ -53,13 +53,13 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *,
     struct pdr *, struct far *, uint64_t);
 /* for ptp instance */
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
-void gtp5g_get_ptp_Tsi(struct sk_buff *skb);
+void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb);
 void gtp5g_push_TdelayValue(struct sk_buff *skb);
-unsigned long long DelayReqResidence;
+uint64_t DelayReqResidence;
 unsigned long long htonll(unsigned long long host);
 void gtp5g_push_rt_DelayResp(struct sk_buff *skb);
 struct tsn_tdelay TDelay = {.t1 = NULL, .t2 = NULL, .t3 = NULL, .t4 = NULL, .Tdelay = 0};
-
+void pkt_hex_dump(struct sk_buff *skb);
 /* When gtp5g newlink, establish the udp tunnel used in N3 interface */
 struct sock *gtp5g_encap_enable(int fd, int type, struct gtp5g_dev *gtp){
     struct udp_tunnel_sock_cfg tuncfg = {NULL};
@@ -806,14 +806,6 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
                 GTP5G_ERR(dev, "Failed to transmit skb through ip_xmit\n");
                 return -1;
             }
-
-            /* Extract IEEE 1588 info */
-            if ( ntohs(uh->source) == PTP_EVENT_PORT || ntohs(uh->source) == PTP_GENERAL_PORT ){
-                ptph = (struct ptp_header *) (uh + 1);
-                messageType = msg_type(ptph);
-                GTP5G_ERR(pdr->dev, "Should not foward the first uplink packet");
-
-            }
             return 0;
         }
     }
@@ -837,18 +829,34 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
      * new network header. This is required by the upper layer to
      * calculate the transport header.
      * */
+    // NOTE: packer format為 skb: |IP|UDP|GTP|IP|UDP|PTP|
     skb_reset_network_header(skb);
+    // NOTE: packer format為 skb->data: |IP|UDP|PTP| 
+    iph = (struct iphdr *)skb->data;
+    if (iph->protocol == IPPROTO_UDP){ //ptp exist
+        uh = (struct udphdr *)(iph + 1);
+        // GTP5G_LOG(NULL, "udph->source: [%u]",ntohs(uh->source));
+    }
+    // /* Extract IEEE 1588 info */
+    if ( ntohs(uh->source) == PTP_EVENT_PORT || ntohs(uh->source) == PTP_GENERAL_PORT ){
+        ptph = (struct ptp_header *) (uh + 1);
+        messageType = msg_type(ptph);
+    }
 
+    // TODO: slave downlink and master uplink
     switch ( messageType ){
         case PTP_SYNC:
             // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
-            gtp5g_get_ptp_Tsi(skb);
+            // GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
+            // gtp5g_get_ptp_Tsi(skb);
             break;
         
         case PTP_DELAY_REQ:
+            GTP5G_LOG(NULL, "PTP_DELAY_REQ");
+
+            gtp5g_get_ptp_Tsi_without_Put(skb);
             break;
 
         case PTP_DELAY_RESP:
@@ -861,7 +869,7 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
             GTP5G_ERR(NULL, "E2E can't pass P2P message.");
             break;
         default:
-            GTP5G_INF(NULL, "Not PTP message. %d", messageType);
+            GTP5G_INF(NULL, "Not PTP message.");
             break;
     }
     skb->dev = dev;
@@ -1035,7 +1043,7 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
 
     pdr->dl_pkt_cnt++;
     pdr->dl_byte_cnt += skb->len;
-    GTP5G_LOG(NULL, "skb->len (%u)", skb->len);
+    // GTP5G_LOG(NULL, "skb->len (%u)", skb->len);
 
     GTP5G_INF(NULL, "PDR (%u) DL_PKT_CNT (%llu) DL_BYTE_CNT (%llu)", pdr->id, pdr->dl_pkt_cnt, pdr->dl_byte_cnt);
 
@@ -1142,53 +1150,44 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     suffix->data.seconds_msb = htons(tv.tv_sec >> 32 & 0xFFFF); // 2 bytes  
     suffix->data.seconds_lsb = htonl(tv.tv_sec & 0xFFFFFFFF); // 4 bytes  
     suffix->data.nanoseconds = htonl(tv.tv_nsec); // 4 bytes
-    GTP5G_LOG(NULL, "Tsi timestamps: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
+    GTP5G_INF(NULL, "Tsi timestamps: %ld %ld\n",tv.tv_sec,tv.tv_nsec);
     return;
 }
 
-void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
-    unsigned long secondsField;
-    unsigned int nanosecondsField;
-    unsigned long long residence;
+void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
+    uint32_t tsi_sec;
+    uint32_t tsi_nsec;
+    uint64_t tsi;
+
     struct timespec tv;
-    int suffix;
-    GTP5G_INF(NULL,"Remove TSi in PTP traffic and calculate Tse");
+    int suffix = skb->len - 20;
+
     /* Remove Tsi field*/
-    suffix = skb->len - 20;
-    GTP5G_LOG(NULL,"second = %x %x %x %x %x %x",skb->data[suffix+10],skb->data[suffix+11],skb->data[suffix+12],skb->data[suffix+13],skb->data[suffix+14],skb->data[suffix+15]);
-    secondsField = skb->data[suffix+15];
-    secondsField = secondsField << 8;
-    secondsField += skb->data[suffix+14];
-    secondsField = secondsField << 8;
-    secondsField += skb->data[suffix+13];
-    secondsField = secondsField << 8;
-    secondsField += skb->data[suffix+12];
-    secondsField = secondsField << 8;
-    secondsField += skb->data[suffix+11];
-    secondsField = secondsField << 8;
-    secondsField += skb->data[suffix+10];
-    GTP5G_INF(NULL,"calculate second = %lu",secondsField);
-    nanosecondsField = skb->data[suffix+19];
-    nanosecondsField <<= 8;
-    nanosecondsField += skb->data[suffix+18];
-    nanosecondsField <<= 8;
-    nanosecondsField += skb->data[suffix+17];
-    nanosecondsField <<= 8;
-    nanosecondsField += skb->data[suffix+16];
-    GTP5G_INF(NULL,"calculate nano second = %u",nanosecondsField);
+    // unsigned long tsi_nsec;
+    // unsigned int nanotsi_nsec;
+    tsi_sec = skb->data[suffix+15] ;
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+14];
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+13];
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+12];
+
+    tsi_nsec = skb->data[suffix+19];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+18];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+17];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+16];
+
+    // GTP5G_LOG(NULL,"calculate second = %llu %llu",tsi_sec,tsi_nsec );
     /* Get current timestamp */
     getnstimeofday(&tv);
-    residence = (tv.tv_nsec > nanosecondsField)? (tv.tv_nsec-nanosecondsField ) : tv.tv_nsec-nanosecondsField + 1000000000;
-    GTP5G_INF(NULL,"residence = %llu",residence);
-    /* Correction Field: 22~27 */
-    if(residence <= 0x7FFFFFFFFFFF){
-        /* Doesn't exceed 6 bytes max*/
-        unsigned char *correction = (unsigned char *)(&skb->data[22]);
-        residence = htonll(residence) >> 16;
-        memcpy(correction,&residence,sizeof(residence));
-    }
+    DelayReqResidence = (tv.tv_nsec > tsi_nsec)? (tv.tv_nsec-tsi_nsec ) : tv.tv_nsec - tsi_nsec + 1000000000;
+    GTP5G_INF(NULL,"residence = %llu",DelayReqResidence);
     skb->len = skb->len - 20;
-};
+}
 
 void gtp5g_push_TdelayValue(struct sk_buff *skb){
     unsigned char* tail_ptr;
