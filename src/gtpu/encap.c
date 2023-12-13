@@ -843,23 +843,25 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
         messageType = msg_type(ptph);
     }
 
-    // TODO: slave downlink and master uplink
+    // [TSN]TODO: slave downlink and master uplink
     switch ( messageType ){
         case PTP_SYNC:
             // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            // GTP5G_LOG(NULL, "PTP_FOLLOW_UP");
+            GTP5G_TRC(NULL, "PTP_FOLLOW_UP");
             // gtp5g_get_ptp_Tsi(skb);
             break;
         
         case PTP_DELAY_REQ:
-            GTP5G_LOG(NULL, "PTP_DELAY_REQ");
-
+            GTP5G_TRC(NULL, "PTP_DELAY_REQ");
             gtp5g_get_ptp_Tsi_without_Put(skb);
             break;
 
         case PTP_DELAY_RESP:
+            GTP5G_TRC(NULL, "PTP_DELAY_RESP");
+            // [TSN]TODO: untest
+            gtp5g_push_rt_DelayResp(skb);
             break;
         /* E2E can't pass P2P message */
         case PTP_PDELAY_REQ:
@@ -1163,8 +1165,6 @@ void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
     int suffix = skb->len - 20;
 
     /* Remove Tsi field*/
-    // unsigned long tsi_nsec;
-    // unsigned int nanotsi_nsec;
     tsi_sec = skb->data[suffix+15] ;
     tsi_sec = tsi_sec << 8;
     tsi_sec += skb->data[suffix+14];
