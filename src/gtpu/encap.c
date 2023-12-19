@@ -1159,7 +1159,6 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
 void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
     uint32_t tsi_sec;
     uint32_t tsi_nsec;
-    uint64_t tsi;
 
     struct timespec tv;
     int suffix = skb->len - 20;
