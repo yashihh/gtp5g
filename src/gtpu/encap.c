@@ -985,7 +985,7 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
             break;
         case PTP_FOLLOW_UP:
             // GTP5G_INF(NULL, "PTP_FOLLOW_UP");
-            gtp5g_push_TdelayValue(skb);
+            // gtp5g_push_TdelayValue(skb);
             gtp5g_set_ptp_Tsi(skb);
             // pkt_hex_dump(skb);
             
@@ -1139,7 +1139,7 @@ int gtp5g_handle_skb_ipv4(struct sk_buff *skb, struct net_device *dev,
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     struct timespec tv;
     struct ptp_suffix *suffix;
-    uint8_t OUI[3] = {0x08, 0x00, 0x27};//{0x1f, 0x9e, 0xa0};
+    uint8_t OUI[3] = {0x08, 0x00, 0x27};//intel i210: {0x1f, 0x9e, 0xa0};
     suffix = (struct ptp_suffix *) skb_put(skb, sizeof(*suffix));
     /* Fill PTP suffix field*/
 	suffix->type = htons(TLV_ORGANIZATION_EXTENSION);
@@ -1188,6 +1188,7 @@ void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
     skb->len = skb->len - 20;
 }
 
+// for peer to peer
 void gtp5g_push_TdelayValue(struct sk_buff *skb){
     unsigned char* tail_ptr;
     struct follow_up_msg *ptr;
@@ -1225,6 +1226,11 @@ void gtp5g_push_rt_DelayResp(struct sk_buff *skb){
     ptr = (struct delay_resp_msg *)(tail_ptr - sizeof(struct delay_resp_msg));
     //offset 2 bytes
     ptr->hdr.correction = (htonll(DelayReqResidence) >> 16);
-    //GTP5G_LOG(NULL, "TDelay.Tdelay = %lld",TDelay.Tdelay);
+    // TODO: Fix Checksum
+    // checksum set to zero
+    skb->data[26] = 0x00;
+    skb->data[27] = 0x00;
+
+    pkt_hex_dump(skb);
     return;
 }
