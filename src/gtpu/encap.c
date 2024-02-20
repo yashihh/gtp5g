@@ -53,6 +53,7 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *,
     struct pdr *, struct far *, uint64_t);
 /* for ptp instance */
 void gtp5g_set_ptp_Tsi(struct sk_buff *skb);
+void gtp5g_get_ptp_Tsi(struct sk_buff *skb);
 void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb);
 void gtp5g_push_TdelayValue(struct sk_buff *skb);
 uint64_t DelayReqResidence;
@@ -850,7 +851,7 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
             break;
         case PTP_FOLLOW_UP:
             GTP5G_TRC(NULL, "PTP_FOLLOW_UP");
-            // gtp5g_get_ptp_Tsi(skb);
+            gtp5g_get_ptp_Tsi(skb);
             break;
         
         case PTP_DELAY_REQ:
@@ -1156,6 +1157,45 @@ void gtp5g_set_ptp_Tsi(struct sk_buff *skb){
     return;
 }
 
+void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
+    uint32_t tsi_sec;
+    uint32_t tsi_nsec;
+    uint64_t residence_time;
+
+    struct timespec tv;
+    int suffix = skb->len - 20;
+
+    /* Remove Tsi field*/
+    tsi_sec = skb->data[suffix+15] ;
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+14];
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+13];
+    tsi_sec = tsi_sec << 8;
+    tsi_sec += skb->data[suffix+12];
+
+    tsi_nsec = skb->data[suffix+19];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+18];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+17];
+    tsi_nsec = tsi_nsec << 8;
+    tsi_nsec += skb->data[suffix+16];
+
+    /* Get current timestamp */
+    getnstimeofday(&tv);
+    GTP5G_LOG(NULL,"Current time = [%llu %llu], TSi = [%llu %llu]",tv.tv_sec ,tv.tv_nsec, tsi_sec,tsi_nsec );
+    residence_time = (tv.tv_nsec > tsi_nsec)? (tv.tv_nsec-tsi_nsec ) : tv.tv_nsec - tsi_nsec + 1000000000;
+    GTP5G_INF(NULL,"Residence_time = %llu",residence_time);
+    if(residence_time <= 0x7FFFFFFFFFFF){
+        /* Doesn't exceed 6 bytes max*/
+        unsigned char *correction = (unsigned char *)(&skb->data[22]);
+        residence_time = htonll(residence_time) >> 16;
+        memcpy(correction,&residence_time,sizeof(residence_time));
+    }
+    skb->len = skb->len - 20;
+}
+
 void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
     uint32_t tsi_sec;
     uint32_t tsi_nsec;
@@ -1230,7 +1270,5 @@ void gtp5g_push_rt_DelayResp(struct sk_buff *skb){
     // checksum set to zero
     skb->data[26] = 0x00;
     skb->data[27] = 0x00;
-
-    pkt_hex_dump(skb);
     return;
 }
