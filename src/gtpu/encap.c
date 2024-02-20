@@ -1184,7 +1184,7 @@ void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
 
     /* Get current timestamp */
     getnstimeofday(&tv);
-    GTP5G_LOG(NULL,"Current time = [%llu %llu], TSi = [%llu %llu]",tv.tv_sec ,tv.tv_nsec, tsi_sec,tsi_nsec );
+    // GTP5G_LOG(NULL,"Current time = [%llu %llu], TSi = [%llu %llu]",tv.tv_sec ,tv.tv_nsec, tsi_sec,tsi_nsec );
     residence_time = (tv.tv_nsec > tsi_nsec)? (tv.tv_nsec-tsi_nsec ) : tv.tv_nsec - tsi_nsec + 1000000000;
     GTP5G_INF(NULL,"Residence_time = %llu",residence_time);
     if(residence_time <= 0x7FFFFFFFFFFF){
@@ -1194,6 +1194,11 @@ void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
         memcpy(correction,&residence_time,sizeof(residence_time));
     }
     skb->len = skb->len - 20;
+
+    // TODO: Fix Checksum
+    // checksum set to zero
+    skb->data[26] = 0x00;
+    skb->data[27] = 0x00;
 }
 
 void gtp5g_get_ptp_Tsi_without_Put(struct sk_buff *skb){
