@@ -847,8 +847,8 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
     // [TSN]TODO: slave downlink and master uplink
     switch ( messageType ){
         case PTP_SYNC:
-            // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
+
         case PTP_FOLLOW_UP:
             GTP5G_TRC(NULL, "PTP_FOLLOW_UP");
             gtp5g_get_ptp_Tsi(skb);
@@ -856,13 +856,10 @@ static int gtp5g_fwd_skb_encap(struct sk_buff *skb, struct net_device *dev,
         
         case PTP_DELAY_REQ:
             GTP5G_TRC(NULL, "PTP_DELAY_REQ");
-            gtp5g_get_ptp_Tsi_without_Put(skb);
             break;
 
         case PTP_DELAY_RESP:
             GTP5G_TRC(NULL, "PTP_DELAY_RESP");
-            // [TSN]TODO: untest
-            gtp5g_push_rt_DelayResp(skb);
             break;
         /* E2E can't pass P2P message */
         case PTP_PDELAY_REQ:
@@ -982,21 +979,17 @@ static int gtp5g_fwd_skb_ipv4(struct sk_buff *skb,
     }
     switch ( messageType ){
         case PTP_SYNC:
-            // GTP5G_LOG(NULL, "PTP_SYNC");
             break;
         case PTP_FOLLOW_UP:
-            // GTP5G_INF(NULL, "PTP_FOLLOW_UP");
-            // gtp5g_push_TdelayValue(skb);
-            gtp5g_set_ptp_Tsi(skb);
-            // pkt_hex_dump(skb);
-            
-            break;
-        
-        case PTP_DELAY_REQ:
+            GTP5G_TRC(NULL, "PTP_FOLLOW_UP");
             break;
 
+        case PTP_DELAY_REQ:
+            GTP5G_TRC(NULL, "PTP_DELAY_REQ");
+            gtp5g_set_ptp_Tsi(skb);
+            break;
         case PTP_DELAY_RESP:
-            gtp5g_push_rt_DelayResp(skb);
+            GTP5G_TRC(NULL, "PTP_DELAY_RESP");
             break;
         /* E2E can't pass P2P message */
         case PTP_PDELAY_REQ:

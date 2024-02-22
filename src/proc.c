@@ -266,12 +266,12 @@ static int gtp5g_urr_read(struct seq_file *s, void *v)
 
     return 0;
 }
-
+/*
 static int gtp5g_Tdelay_read(struct seq_file *s, void *v) {
     seq_printf(s, "Current: Tdelay = %d\n", get_Tdelay_lvl());
     return 0;
 }
-
+*/
 static ssize_t proc_pdr_write(struct file *filp, const char __user *buffer,
     size_t len, loff_t *dptr)
 {
@@ -525,7 +525,7 @@ err:
     proc_urr_id = 0;
     return -1;
 }
-
+/*
 static ssize_t proc_Tdelay_write(struct file *filp, const char __user *buffer,
     size_t len, loff_t *dptr) 
 {
@@ -554,7 +554,7 @@ static ssize_t proc_Tdelay_write(struct file *filp, const char __user *buffer,
 err:
     return -1;
 }
-
+*/
 static int proc_pdr_read(struct inode *inode, struct file *file)
 {
     return single_open(file, gtp5g_pdr_read, NULL);
@@ -575,10 +575,10 @@ static int proc_urr_read(struct inode *inode, struct file *file)
     return single_open(file, gtp5g_urr_read, NULL);
 }
 
-static int proc_Tdelay_read(struct inode *inode, struct file *file)
-{
-    return single_open(file, gtp5g_Tdelay_read, NULL);
-}
+// static int proc_Tdelay_read(struct inode *inode, struct file *file)
+// {
+//     return single_open(file, gtp5g_Tdelay_read, NULL);
+// }
 
 
 #if LINUX_VERSION_CODE >= KERNEL_VERSION(5, 6, 0)
