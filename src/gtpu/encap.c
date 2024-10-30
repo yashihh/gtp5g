@@ -1186,7 +1186,6 @@ void gtp5g_get_ptp_Tsi(struct sk_buff *skb){
         residence_time = htonll(residence_time) >> 16;
         memcpy(correction,&residence_time,sizeof(residence_time));
     }
-    skb->len = skb->len - 20;
 
     // TODO: Fix Checksum
     // checksum set to zero
